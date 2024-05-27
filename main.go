@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -16,22 +17,22 @@ var (
 	messageIDToDuration = make(map[string]int)      // map messageID to duration
 )
 
-func main() {
+func handler(w http.ResponseWriter, r *http.Request) {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Error loading .env file:", err)
+		http.Error(w, "Error loading .env file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	Token = os.Getenv("DISCORD_BOT_TOKEN")
 	if Token == "" {
-		fmt.Println("DISCORD_BOT_TOKEN is not set in .env file")
+		http.Error(w, "DISCORD_BOT_TOKEN is not set in .env file", http.StatusInternalServerError)
 		return
 	}
 
 	dg, err := discordgo.New("Bot " + Token)
 	if err != nil {
-		fmt.Println("Error creating Discord session:", err)
+		http.Error(w, "Error creating Discord session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -41,7 +42,7 @@ func main() {
 
 	err = dg.Open()
 	if err != nil {
-		fmt.Println("Error opening Discord session:", err)
+		http.Error(w, "Error opening Discord session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer dg.Close()
@@ -97,16 +98,16 @@ func main() {
 
 	_, err = dg.ApplicationCommandCreate(dg.State.User.ID, "", command)
 	if err != nil {
-		fmt.Println("Error creating command:", err)
+		http.Error(w, "Error creating command: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Println("Bot is running. Press CTRL+C to exit.")
-	select {}
+	fmt.Fprintf(w, "Bot is running")
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
 	s.UpdateGameStatus(0, "/temproles")
+	fmt.Println("Bot is up!")
 }
 
 func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -166,7 +167,6 @@ func handleTempRolesCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	// Retrieve the message content to store it along with the role IDs
 	message, err := s.ChannelMessage(i.ChannelID, messageID)
 	if err != nil {
 		fmt.Println("Error fetching message:", err)
@@ -179,7 +179,6 @@ func handleTempRolesCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	// Store the messageID, roleIDs, message content, and duration in the maps
 	messageIDToRole[messageID] = roleIDs
 	messageIDToContent[messageID] = message.Content
 	messageIDToDuration[messageID] = duration
@@ -212,7 +211,6 @@ func messageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
 
 	fmt.Println("Reaction added by user:", r.UserID, "Emoji:", r.Emoji.Name, "MessageID:", messageID)
 
-	// Retrieve roleIDs and message content from the maps using the messageID
 	roleIDs, ok := messageIDToRole[messageID]
 	if !ok {
 		fmt.Println("Message ID not found in map:", messageID)
@@ -224,8 +222,6 @@ func messageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
 		fmt.Println("Duration not found for message ID:", messageID)
 		duration = 1 // Default to 1 hour if duration is not found
 	}
-
-	fmt.Println("Message content for message ID:", messageID)
 
 	var roleID string
 	switch r.Emoji.Name {
@@ -284,4 +280,9 @@ func messageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
 		}
 		fmt.Println("Role removed:", roleID, "from user:", r.UserID)
 	}()
+}
+
+func main() {
+	http.HandleFunc("/", handler)
+	http.ListenAndServe(":8080", nil)
 }
