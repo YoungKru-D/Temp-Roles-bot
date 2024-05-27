@@ -17,23 +17,20 @@ var (
 	messageIDToDuration = make(map[string]int)      // map messageID to duration
 )
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func initBot() error {
 	err := godotenv.Load()
 	if err != nil {
-		http.Error(w, "Error loading .env file: "+err.Error(), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error loading .env file: %w", err)
 	}
 
 	Token = os.Getenv("DISCORD_BOT_TOKEN")
 	if Token == "" {
-		http.Error(w, "DISCORD_BOT_TOKEN is not set in .env file", http.StatusInternalServerError)
-		return
+		return fmt.Errorf("DISCORD_BOT_TOKEN is not set in .env file")
 	}
 
 	dg, err := discordgo.New("Bot " + Token)
 	if err != nil {
-		http.Error(w, "Error creating Discord session: "+err.Error(), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error creating Discord session: %w", err)
 	}
 
 	dg.AddHandler(ready)
@@ -42,10 +39,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	err = dg.Open()
 	if err != nil {
-		http.Error(w, "Error opening Discord session: "+err.Error(), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error opening Discord session: %w", err)
 	}
-	defer dg.Close()
 
 	command := &discordgo.ApplicationCommand{
 		Name:        "temproles",
@@ -98,11 +93,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = dg.ApplicationCommandCreate(dg.State.User.ID, "", command)
 	if err != nil {
-		http.Error(w, "Error creating command: "+err.Error(), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error creating command: %w", err)
 	}
 
-	fmt.Fprintf(w, "Bot is running")
+	return nil
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
@@ -282,7 +276,16 @@ func messageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
 	}()
 }
 
+func HandleRequest(w http.ResponseWriter, r *http.Request) {
+	err := initBot()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "Bot is running")
+}
+
 func main() {
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/", HandleRequest)
 	http.ListenAndServe(":8080", nil)
 }
